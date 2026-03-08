@@ -1,159 +1,161 @@
 import React, { useState, useMemo } from 'react';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
 
-const STEEL_REF: Record<number, { rods: number; bundleWeight: number }> = {
-  8:  { rods: 10, bundleWeight: 47.4 },
-  10: { rods: 7,  bundleWeight: 51.87 },
-  12: { rods: 5,  bundleWeight: 53.35 },
-  16: { rods: 3,  bundleWeight: 56.88 },
-  20: { rods: 2,  bundleWeight: 59.26 },
-  25: { rods: 1,  bundleWeight: 46.3 },
-};
+// Unit weight calculation: (D^2 / 162)
+const calcUnitWeight = (dia: number) => (dia * dia) / 162;
 
-export default function FootingBBSCalculator() {
-  const [rows, setRows] = useState<any[]>([
-    { id: 1, tag: 'T1', s: '4', d: '10', sp: '150', qty: '3' }
-  ]);
+const ColumnBBS: React.FC = () => {
+  // --- STATE MANAGEMENT (Inputs from your Excel) ---
+  const [colWidth, setColWidth] = useState<number>(230); // mm
+  const [colDepth, setColDepth] = useState<number>(300); // mm
+  const [heightFt, setHeightFt] = useState<number>(11);
+  const [ratePerKg, setRatePerKg] = useState<number>(80);
 
-  // SEAMLESS CALCULATION ENGINE
-  // Memoized to prevent lag during typing
-  const computedData = useMemo(() => {
-    const results = rows.map(r => {
-      const s = parseFloat(r.s) || 0;
-      const d = parseFloat(r.d) || 0;
-      const sp = parseFloat(r.sp) || 0;
-      const qty = parseFloat(r.qty) || 0;
+  // Main Reinforcement
+  const [diaCorner, setDiaCorner] = useState<number>(12);
+  const [numCorner, setNumCorner] = useState<number>(4);
+  const [diaExtra, setDiaExtra] = useState<number>(12);
+  const [numExtra, setNumExtra] = useState<number>(2);
 
-      if (s === 0 || d === 0 || sp === 0) return { ...r, bars: 0, totalKg: 0 };
+  // Lateral Ties (Stirrups)
+  const [diaTies, setDiaTies] = useState<number>(8);
+  const [spacingInch, setSpacingInch] = useState<number>(6);
+  const [clearCover, setClearCover] = useState<number>(40); // Standard 40mm
 
-      // Excel Exact Formulas
-      const sizeM = s / 3.281;
-      const bars = Math.ceil(((sizeM * 1000) - 100) / sp + 1) * 2;
-      const lengthM = ((s + 0.6666) * bars) / 3.281;
-      const totalKg = (lengthM * ((d * d) / 162)) * qty;
+  // --- CALCULATION ENGINE (Memoized for Performance) ---
+  const data = useMemo(() => {
+    const heightM = heightFt * 0.3048;
+    
+    // 1. Main Bars Calculation
+    const weightCorner = heightM * numCorner * calcUnitWeight(diaCorner);
+    const weightExtra = heightM * numExtra * calcUnitWeight(diaExtra);
 
-      return { ...r, bars, totalKg };
-    });
+    // 2. Ties Calculation (Based on Excel 'Ties Length' logic)
+    // Perimeter - Cover + Hooks (simplified for 90/135 deg)
+    const tieLengthM = (((colWidth - 2 * clearCover) * 2) + ((colDepth - 2 * clearCover) * 2) + 200) / 1000;
+    const numTies = Math.ceil((heightFt * 12) / spacingInch) + 1;
+    const weightTies = tieLengthM * numTies * calcUnitWeight(diaTies);
 
-    const summary: Record<number, number> = { 8: 0, 10: 0, 12: 0, 16: 0, 20: 0, 25: 0 };
-    results.forEach(res => {
-      const dia = parseInt(res.d);
-      if (summary[dia] !== undefined) summary[dia] += res.totalKg;
-    });
+    const totalWeight = weightCorner + weightExtra + weightTies;
 
-    return { results, summary };
-  }, [rows]);
-
-  const addRow = () => setRows([...rows, { 
-    id: Date.now(), 
-    tag: `T${rows.length + 1}`, 
-    s: '4', d: '10', sp: '150', qty: '1' 
-  }]);
-
-  const deleteRow = (id: number) => setRows(rows.filter(row => row.id !== id));
-  
-  const updateRow = (id: number, field: string, val: string) => {
-    setRows(rows.map(row => row.id === id ? { ...row, [field]: val } : row));
-  };
-
-  const generatePDF = () => {
-    const doc = new jsPDF();
-    doc.text("FOOTING BBS SUMMARY REPORT", 14, 15);
-    autoTable(doc, {
-      startY: 22,
-      head: [['Type', 'Size (Ft)', 'Dia (mm)', 'Spacing', 'Qty', 'Total KG']],
-      body: computedData.results.map(r => [
-        r.tag, `${r.s}x${r.s}`, `${r.d}mm`, r.sp, r.qty, r.totalKg.toFixed(2)
-      ]),
-      headStyles: { fillColor: [146, 208, 80] } // Green Color Tone
-    });
-
-    const summaryRows = Object.entries(computedData.summary)
-      .filter(([_, kg]) => kg > 0)
-      .map(([dia, kg]) => [`${dia}mm Steel`, `${kg.toFixed(2)} KG`]);
-
-    autoTable(doc, {
-      startY: (doc as any).lastAutoTable.finalY + 10,
-      head: [['Final Diameter Summary', 'Total Weight']],
-      body: summaryRows,
-      headStyles: { fillColor: [0, 112, 192] } // Blue Color Tone
-    });
-    doc.save("Footing_BBS_Report.pdf");
-  };
+    return {
+      cornerWeight: weightCorner.toFixed(2),
+      extraWeight: weightExtra.toFixed(2),
+      tiesWeight: weightTies.toFixed(2),
+      totalKg: totalWeight.toFixed(2),
+      totalCost: Math.round(totalWeight * ratePerKg)
+    };
+  }, [colWidth, colDepth, heightFt, diaCorner, numCorner, diaExtra, numExtra, diaTies, spacingInch, ratePerKg]);
 
   return (
-    <div style={{ maxWidth: '400px', margin: '0 auto', fontFamily: 'sans-serif', backgroundColor: '#f9f9f9', minHeight: '100vh', paddingBottom: '40px' }}>
-      {/* Header Matching Doubly Reinforced Tool */}
-      <header style={{ backgroundColor: '#92d050', padding: '15px', textAlign: 'center', fontWeight: '900', fontSize: '18px', borderBottom: '3px solid #76b041' }}>
-        FOOTING BBS CALCULATOR
-      </header>
+    <div className="min-h-screen bg-gray-50 font-sans pb-10">
+      {/* Header Area */}
+      <div className="bg-[#8bc34a] p-4 text-center shadow-md">
+        <h1 className="text-white font-black text-xl tracking-wider">COLUMN BBS CALCULATOR</h1>
+      </div>
 
-      <div style={{ padding: '12px' }}>
-        {rows.map((row, index) => {
-          const res = computedData.results[index];
-          return (
-            <div key={row.id} style={{ marginBottom: '20px', borderRadius: '12px', overflow: 'hidden', border: '1px solid #ccc', boxShadow: '0 4px 10px rgba(0,0,0,0.1)' }}>
-              <div style={{ backgroundColor: '#00b0f0', border: '2px solid #0070c0' }}>
-                <div style={{ backgroundColor: '#0070c0', color: 'white', padding: '6px 12px', fontSize: '11px', fontWeight: 'bold', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span>EDITABLE DATA - {row.tag}</span>
-                  <button onClick={() => deleteRow(row.id)} style={{ background: '#ff4d4d', color: 'white', border: 'none', borderRadius: '50%', width: '22px', height: '22px', cursor: 'pointer' }}>×</button>
-                </div>
-                
-                <div style={{ padding: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.25)', padding: '6px 10px', borderRadius: '6px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '900' }}>Size (Ft)</label>
-                    <input type="text" inputMode="decimal" value={row.s} onChange={e => updateRow(row.id, 's', e.target.value)} style={{ width: '85px', textAlign: 'right', padding: '5px', border: '1px solid #0070c0', borderRadius: '4px', fontWeight: 'bold' }} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.25)', padding: '6px 10px', borderRadius: '6px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '900' }}>Dia (mm)</label>
-                    <select value={row.d} onChange={e => updateRow(row.id, 'd', e.target.value)} style={{ width: '97px', padding: '5px', border: '1px solid #0070c0', borderRadius: '4px', fontWeight: 'bold' }}>
-                      {[8, 10, 12, 16, 20, 25].map(d => <option key={d} value={d}>{d}mm</option>)}
-                    </select>
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.25)', padding: '6px 10px', borderRadius: '6px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '900' }}>Spacing (mm)</label>
-                    <input type="text" inputMode="numeric" value={row.sp} onChange={e => updateRow(row.id, 'sp', e.target.value)} style={{ width: '85px', textAlign: 'right', padding: '5px', border: '1px solid #0070c0', borderRadius: '4px', fontWeight: 'bold' }} />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'rgba(255,255,255,0.25)', padding: '6px 10px', borderRadius: '6px' }}>
-                    <label style={{ fontSize: '12px', fontWeight: '900' }}>Qty (Nos)</label>
-                    <input type="text" inputMode="numeric" value={row.qty} onChange={e => updateRow(row.id, 'qty', e.target.value)} style={{ width: '85px', textAlign: 'right', padding: '5px', border: '1px solid #0070c0', borderRadius: '4px', fontWeight: '900' }} />
-                  </div>
-                </div>
-              </div>
+      <div className="p-3 space-y-4">
+        {/* EDITABLE DATA CARD */}
+        <div className="bg-[#03a9f4] rounded-xl shadow-lg overflow-hidden border-b-4 border-sky-700">
+          <div className="bg-[#0288d1] px-4 py-2 flex justify-between items-center">
+            <span className="text-white font-bold text-xs uppercase">Editable Data - T1</span>
+            <button className="bg-red-500 text-white rounded-full w-5 h-5 text-[10px]">✕</button>
+          </div>
 
-              {/* Yellow Result Area */}
-              <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 15px', backgroundColor: '#ffff00', fontWeight: 'bold', borderBottom: '1px solid #ddd', fontSize: '13px' }}>
-                <span>Total Bars</span>
-                <span>{res.bars} Nos</span>
-              </div>
-              <div style={{ backgroundColor: '#92d050', padding: '12px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderTop: '2px solid #76b041' }}>
-                <span style={{ fontWeight: '900', fontSize: '14px', fontStyle: 'italic' }}>TOTAL WEIGHT</span>
-                <span style={{ fontWeight: '900', fontSize: '18px', color: '#003366' }}>{res.totalKg.toFixed(2)} KG</span>
-              </div>
-            </div>
-          );
-        })}
+          <div className="p-4 space-y-2">
+            {/* Input Row: Column Size */}
+            <InputRow label="Width (mm)" value={colWidth} onChange={setColWidth} />
+            <InputRow label="Depth (mm)" value={colDepth} onChange={setColDepth} />
+            
+            {/* Select Row: Corner Bars */}
+            <SelectRow 
+              label="Dia. Corner Bars" 
+              value={diaCorner} 
+              onChange={setDiaCorner} 
+              options={[12, 16, 20, 25]} 
+            />
+            
+            {/* Select Row: Extra Bars */}
+            <SelectRow 
+              label="Dia. Extra Bars" 
+              value={diaExtra} 
+              onChange={setDiaExtra} 
+              options={[12, 16, 20]} 
+            />
 
-        {/* SUMMARY SECTION */}
-        <div style={{ backgroundColor: '#fff', padding: '15px', borderRadius: '12px', border: '2px solid #0070c0', marginBottom: '20px' }}>
-          <h3 style={{ margin: '0 0 10px 0', fontSize: '14px', textAlign: 'center', borderBottom: '2px solid #0070c0', paddingBottom: '5px' }}>STEEL CONSUMPTION SUMMARY</h3>
-          {Object.entries(computedData.summary).map(([dia, kg]) => kg > 0 && (
-            <div key={dia} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px dashed #ccc' }}>
-              <span style={{ fontWeight: 'bold', color: '#0070c0' }}>{dia}mm Steel:</span>
-              <span style={{ fontWeight: 'bold' }}>{kg.toFixed(2)} KG</span>
-            </div>
-          ))}
+            {/* Input Row: Spacing */}
+            <InputRow label="Ties Spacing (Inch)" value={spacingInch} onChange={setSpacingInch} />
+            
+            {/* Input Row: Height */}
+            <InputRow label="Height (Ft)" value={heightFt} onChange={setHeightFt} />
+          </div>
+
+          {/* Yellow Total Bar */}
+          <div className="bg-[#ffff00] p-3 flex justify-between items-center font-black text-gray-800">
+            <span>TOTAL WEIGHT</span>
+            <span>{data.totalKg} KG</span>
+          </div>
         </div>
 
-        <button onClick={addRow} style={{ width: '100%', padding: '14px', backgroundColor: '#0070c0', color: 'white', border: 'none', borderRadius: '10px', fontWeight: 'bold', marginBottom: '12px', cursor: 'pointer', fontSize: '13px' }}>
-          + ADD NEW FOOTING TYPE
-        </button>
+        {/* SUMMARY CARD */}
+        <div className="bg-white rounded-xl border-2 border-[#03a9f4] p-4 shadow-sm">
+          <h2 className="text-center font-bold text-gray-700 border-b-2 border-sky-100 pb-2 mb-4">
+            STEEL CONSUMPTION SUMMARY
+          </h2>
+          
+          <SummaryLine label={`${diaCorner}mm Corner Steel`} value={data.cornerWeight} />
+          <SummaryLine label={`${diaExtra}mm Extra Steel`} value={data.extraWeight} />
+          <SummaryLine label={`${diaTies}mm Ties Steel`} value={data.tiesWeight} />
 
-        <button onClick={generatePDF} style={{ width: '100%', padding: '16px', backgroundColor: '#333', color: '#fff', border: 'none', borderRadius: '10px', fontWeight: '900', cursor: 'pointer', fontSize: '14px' }}>
-          GENERATE SUMMARY PDF
+          <div className="mt-4 pt-4 border-t-2 border-gray-100 flex justify-between items-center">
+            <span className="font-bold text-gray-600">TOTAL COST (₹{ratePerKg}/kg)</span>
+            <span className="text-xl font-black text-green-600">₹ {data.totalCost.toLocaleString()}</span>
+          </div>
+        </div>
+
+        {/* ACTION BUTTONS */}
+        <button className="w-full bg-[#0288d1] text-white font-bold py-4 rounded-lg shadow-md active:bg-sky-800 transition-colors uppercase tracking-widest text-sm">
+          + Add New Column Type
+        </button>
+        <button className="w-full bg-[#212121] text-white font-bold py-4 rounded-lg shadow-md active:bg-black transition-colors uppercase tracking-widest text-sm">
+          Generate Summary PDF
         </button>
       </div>
     </div>
   );
-}
+};
+
+// --- SUB-COMPONENTS FOR CLEANER CODE ---
+
+const InputRow = ({ label, value, onChange }: any) => (
+  <div className="flex items-center bg-[#4fc3f7] rounded-lg p-2 gap-2">
+    <span className="text-white text-xs font-bold flex-1 uppercase">{label}</span>
+    <input 
+      type="number" 
+      value={value} 
+      onChange={(e) => onChange(e.target.value === '' ? '' : Number(e.target.value))}
+      className="w-20 rounded p-1 text-center font-bold outline-none border-none text-gray-700"
+    />
+  </div>
+);
+
+const SelectRow = ({ label, value, onChange, options }: any) => (
+  <div className="flex items-center bg-[#4fc3f7] rounded-lg p-2 gap-2">
+    <span className="text-white text-xs font-bold flex-1 uppercase">{label}</span>
+    <select 
+      value={value} 
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="w-20 rounded p-1 text-center font-bold outline-none border-none text-gray-700 bg-white"
+    >
+      {options.map((opt: number) => <option key={opt} value={opt}>{opt}mm</option>)}
+    </select>
+  </div>
+);
+
+const SummaryLine = ({ label, value }: any) => (
+  <div className="flex justify-between py-2 border-b border-dotted border-gray-300 last:border-0">
+    <span className="text-[#0288d1] font-bold text-sm">{label}:</span>
+    <span className="font-black text-gray-800">{value} KG</span>
+  </div>
+);
+
+export default ColumnBBS;

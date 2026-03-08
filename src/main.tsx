@@ -1,6 +1,6 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
-import FootingBBSCalculator from './FootingBBS'
+import FootingBBSCalculator from './ColumnBBS'
 import './style.css'
 
 const rootElement = document.getElementById('root') || document.getElementById('app');
@@ -12,3 +12,4 @@ if (rootElement) {
     </React.StrictMode>,
   )
 }
+

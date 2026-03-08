@@ -23,8 +23,8 @@ interface ColumnData {
 const ColumnBBS: React.FC = () => {
   const [columns, setColumns] = useState<ColumnData[]>([
     { 
-      id: '1', name: 'C1', width: '230', depth: '380', 
-      diaCorner: 16, numCorner: '4', 
+      id: '1', name: 'C1', width: '230', depth: '300', 
+      diaCorner: 12, numCorner: '4', 
       diaExtra: 12, numExtra: '2', 
       diaTies: 8, spacing: '6', height: '11', numCols: '1' 
     }
@@ -50,7 +50,7 @@ const ColumnBBS: React.FC = () => {
       const sIn = parseFloat(col.spacing) || 1;
       const wMm = parseFloat(col.width) || 0;
       const dMm = parseFloat(col.depth) || 0;
-      const heightM = hFt * 0.3048; // Convert Ft to Meters as per Excel
+      const heightM = hFt * 0.3048; // Convert Ft to Meters
 
       // Lap Length (50d) calculation
       const lapCornerM = (50 * col.diaCorner) / 1000;
@@ -62,7 +62,7 @@ const ColumnBBS: React.FC = () => {
       // 2. Extra Bars (Height + 50d Lap)
       const extraKg = (heightM + lapExtraM) * (parseFloat(col.numExtra) || 0) * getWeightPerMeter(col.diaExtra) * nCols;
 
-      // 3. Stirrups (Ties): Dynamic cutting length based on input size
+      // 3. Stirrups: Dynamic cutting length based on input size
       // Perimeter - 80mm cover + 200mm hooks
       const tieLengthM = (((wMm - 80) * 2) + ((dMm - 80) * 2) + 200) / 1000;
       const totalTies = (Math.ceil((hFt * 12) / sIn) + 1) * nCols;
@@ -98,14 +98,14 @@ const ColumnBBS: React.FC = () => {
         c.numCols, 
         c.subTotal.toFixed(2)
       ]),
-      headStyles: { fillColor: [139, 195, 74] } // Footing BBS Green
+      headStyles: { fillColor: [139, 195, 74] } 
     });
 
     autoTable(doc, {
       startY: (doc as any).lastAutoTable.finalY + 10,
       head: [['Final Diameter Summary', 'Total Weight (KG)']],
-      body: Object.entries(results.diaSummary).map(([d, kg]) => [`${d}mm Steel`, `${kg.toFixed(2)} KG`]),
-      headStyles: { fillColor: [3, 169, 244] } // Footing BBS Blue
+      body: Object.entries(results.diaSummary).map(([d, kg]) => [`${d}mm Steel`, `${Number(kg).toFixed(2)} KG`]),
+      headStyles: { fillColor: [3, 169, 244] }
     });
 
     doc.save("Column_BBS_Report.pdf");
@@ -114,9 +114,7 @@ const ColumnBBS: React.FC = () => {
   return (
     <div style={{ backgroundColor: '#f5f5f5', minHeight: '100vh', fontFamily: 'sans-serif', paddingBottom: '40px' }}>
       <div style={{ backgroundColor: '#8bc34a', padding: '15px', textAlign: 'center', boxShadow: '0 2px 5px rgba(0,0,0,0.2)' }}>
-        <h1 style={{ color: '#000', margin: 0, fontSize: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>
-            Column BBS Calculator
-        </h1>
+        <h1 style={{ color: '#000', margin: 0, fontSize: '20px', fontWeight: 'bold', textTransform: 'uppercase' }}>Column BBS Calculator</h1>
       </div>
 
       <div style={{ padding: '12px' }}>
@@ -129,20 +127,24 @@ const ColumnBBS: React.FC = () => {
 
             <div style={{ padding: '15px' }}>
               <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                <Box label="Width (MM)" value={col.width} onChange={v => updateCol(col.id, 'width', v)} />
-                <Box label="Depth (MM)" value={col.depth} onChange={v => updateCol(col.id, 'depth', v)} />
+                <Box label="Width (MM)" value={col.width} onChange={(v: string) => updateCol(col.id, 'width', v)} />
+                <Box label="Depth (MM)" value={col.depth} onChange={(v: string) => updateCol(col.id, 'depth', v)} />
               </div>
               <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                <SelBox label="Dia Corner" value={col.diaCorner} onChange={v => updateCol(col.id, 'diaCorner', v)} options={[10, 12, 16, 20, 25, 32]} />
-                <Box label="Corner Nos" value={col.numCorner} onChange={v => updateCol(col.id, 'numCorner', v)} />
+                <SelBox label="Dia Corner" value={col.diaCorner} onChange={(v: number) => updateCol(col.id, 'diaCorner', v)} options={[10, 12, 16, 20, 25, 32]} />
+                <Box label="Corner Nos" value={col.numCorner} onChange={(v: string) => updateCol(col.id, 'numCorner', v)} />
               </div>
               <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
-                <SelBox label="Dia Extra" value={col.diaExtra} onChange={v => updateCol(col.id, 'diaExtra', v)} options={[10, 12, 16, 20, 25, 32]} />
-                <Box label="Extra Nos" value={col.numExtra} onChange={v => updateCol(col.id, 'numExtra', v)} />
+                <SelBox label="Dia Extra" value={col.diaExtra} onChange={(v: number) => updateCol(col.id, 'diaExtra', v)} options={[10, 12, 16, 20, 25, 32]} />
+                <Box label="Extra Nos" value={col.numExtra} onChange={(v: string) => updateCol(col.id, 'numExtra', v)} />
+              </div>
+              <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+                <SelBox label="Dia Stirrups" value={col.diaTies} onChange={(v: number) => updateCol(col.id, 'diaTies', v)} options={[8, 10, 12]} />
+                <Box label="Spacing (Inch)" value={col.spacing} onChange={(v: string) => updateCol(col.id, 'spacing', v)} />
               </div>
               <div style={{ display: 'flex', gap: '10px' }}>
-                <Box label="Height (Ft)" value={col.height} onChange={v => updateCol(col.id, 'height', v)} />
-                <Box label="No. of Columns" value={col.numCols} onChange={v => updateCol(col.id, 'numCols', v)} />
+                <Box label="Height (Ft)" value={col.height} onChange={(v: string) => updateCol(col.id, 'height', v)} />
+                <Box label="No. of Columns" value={col.numCols} onChange={(v: string) => updateCol(col.id, 'numCols', v)} />
               </div>
             </div>
 
@@ -154,14 +156,14 @@ const ColumnBBS: React.FC = () => {
 
         <div style={{ backgroundColor: '#fff', borderRadius: '15px', border: '3px solid #03a9f4', padding: '20px' }}>
           <h2 style={{ textAlign: 'center', fontWeight: '900', color: '#0288d1', textTransform: 'uppercase', marginBottom: '15px' }}>Steel Consumption Summary</h2>
-          {Object.entries(results.diaTotals).map(([dia, kg]) => (
+          {Object.entries(results.diaSummary).map(([dia, kg]) => (
             <div key={dia} style={{ display: 'flex', justifyContent: 'space-between', padding: '8px 0', borderBottom: '1px dotted #ccc', fontWeight: 'bold' }}>
               <span style={{ color: '#03a9f4' }}>{dia}mm Steel:</span>
-              <span>{kg.toFixed(2)} KG</span>
+              <span>{Number(kg).toFixed(2)} KG</span>
             </div>
           ))}
           <div style={{ marginTop: '20px', backgroundColor: '#8bc34a', padding: '15px', borderRadius: '12px', textAlign: 'center', fontWeight: '900', fontSize: '18px' }}>
-            GRAND TOTAL: {results.grandTotalKg.toFixed(2)} KG
+            GRAND TOTAL: {results.grandTotal.toFixed(2)} KG
           </div>
         </div>
 
@@ -172,7 +174,6 @@ const ColumnBBS: React.FC = () => {
   );
 };
 
-// UI Components
 const Box = ({ label, value, onChange }: any) => (
   <div style={{ flex: 1, backgroundColor: '#4fc3f7', padding: '10px', borderRadius: '12px' }}>
     <label style={{ display: 'block', color: '#fff', fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase', marginBottom: '5px' }}>{label}</label>
